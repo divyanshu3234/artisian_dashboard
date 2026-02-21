@@ -1,13 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCart, CartItem } from "../cartStore";
+import { createClient } from "@/lib/supabase/client";
 
 function CartPage() {
   const router = useRouter();
   const { items, remove, setQty, total, clear } = useCart();
   const [step, setStep] = useState<"cart" | "address" | "payment" | "done">("cart");
+  const [seller, setSeller] = useState<any>(null);
+
+  const supabase = createClient();
+
+  // 🔥 Fetch seller info when address step opens
+  useEffect(() => {
+    if (step !== "address") return;
+
+    const fetchSeller = async () => {
+      const { data, error } = await supabase
+        .from("sellers")
+        .select(`
+          first_name,
+          last_name,
+          street_address,
+          city,
+          pin_code,
+          phone_number
+        `)
+        .single();
+
+      // console.log("SELLER DATA:", data);
+      // console.log("SELLER ERROR:", error);
+
+      if (!error && data) {
+        setSeller(data);
+      }
+    };
+
+    fetchSeller();
+  }, [step]);
 
   // ── Success Screen ──────────────────────────────────────────────────────────
   if (step === "done") {
@@ -38,7 +70,7 @@ function CartPage() {
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white">
 
-      {/* Header with working back button */}
+      {/* Header */}
       <div className="border-b px-6 py-4 flex items-center gap-4
         bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 shadow-sm">
         <button
@@ -50,7 +82,7 @@ function CartPage() {
         <h1 className="font-bold text-lg">Checkout</h1>
       </div>
 
-      {/* Steps Indicator */}
+      {/* Steps */}
       <div className="flex items-center gap-3 px-6 py-4 border-b text-sm
         bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700">
         {(["cart", "address", "payment"] as const).map((s, i) => (
@@ -85,7 +117,7 @@ function CartPage() {
         {/* ── Main Content ────────────────────────────────────────────────── */}
         <div className="lg:col-span-2">
 
-          {/* Step 1 – Cart Items */}
+          {/* Step 1 – Cart */}
           {step === "cart" && (
             <div>
               <h2 className="font-bold text-lg mb-4">Your Items</h2>
@@ -116,23 +148,12 @@ function CartPage() {
                       />
                       <div className="flex-1">
                         <p className="font-semibold">{item.name}</p>
-                        <p className="text-sm text-neutral-400">{item.artisan}</p>
                         <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-2 rounded-lg px-3 py-1 text-sm
                             bg-neutral-100 dark:bg-neutral-800">
-                            <button
-                              onClick={() => setQty(item.id, item.qty - 1)}
-                              className="text-neutral-700 dark:text-white"
-                            >
-                              −
-                            </button>
+                            <button onClick={() => setQty(item.id, item.qty - 1)}>−</button>
                             <span className="w-4 text-center">{item.qty}</span>
-                            <button
-                              onClick={() => setQty(item.id, item.qty + 1)}
-                              className="text-neutral-700 dark:text-white"
-                            >
-                              +
-                            </button>
+                            <button onClick={() => setQty(item.id, item.qty + 1)}>+</button>
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-amber-600 font-bold">
@@ -167,15 +188,15 @@ function CartPage() {
               <div className="rounded-xl p-5 space-y-4 border shadow-sm
                 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700">
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="First Name" />
-                  <Field label="Last Name" />
+                  <Field label="First Name" defaultValue={seller?.first_name} />
+                  <Field label="Last Name" defaultValue={seller?.last_name} />
                 </div>
-                <Field label="Street Address" />
+                <Field label="Street Address" defaultValue={seller?.street_address} />
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="City" />
-                  <Field label="PIN Code" />
+                  <Field label="City" defaultValue={seller?.city} />
+                  <Field label="PIN Code" defaultValue={seller?.pin_code} />
                 </div>
-                <Field label="Phone Number" type="tel" />
+                <Field label="Phone Number" type="tel" defaultValue={seller?.phone_number} />
               </div>
               <button
                 onClick={() => setStep("payment")}
@@ -193,20 +214,14 @@ function CartPage() {
               <div className="rounded-xl p-5 space-y-4 border shadow-sm
                 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700">
                 <div className="grid grid-cols-2 gap-3">
-                  {["💳 Card", "📱 UPI", "🏦 Netbanking", "💰 Wallet"].map(
-                    (m: string) => (
-                      <button
-                        key={m}
-                        className="rounded-xl py-2.5 text-sm transition-colors border
-                          bg-neutral-50 dark:bg-neutral-800
-                          border-neutral-200 dark:border-neutral-600
-                          text-neutral-700 dark:text-white
-                          hover:border-amber-400"
-                      >
-                        {m}
-                      </button>
-                    )
-                  )}
+                  {["💳 Card", "📱 UPI", "🏦 Netbanking", "💰 Wallet"].map((m: string) => (
+                    <button
+                      key={m}
+                      className="bg-neutral-800 hover:bg-neutral-700 border border-white/10 rounded-xl py-2.5 text-sm text-white transition-colors"
+                    >
+                      {m}
+                    </button>
+                  ))}
                 </div>
                 <Field label="Card Number" placeholder="1234 5678 9012 3456" />
                 <div className="grid grid-cols-2 gap-4">
@@ -224,7 +239,7 @@ function CartPage() {
           )}
         </div>
 
-        {/* ── Order Summary ────────────────────────────────────────────────── */}
+        {/* Order Summary */}
         <div>
           <div className="rounded-xl p-5 sticky top-6 border shadow-sm
             bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700">
@@ -232,9 +247,7 @@ function CartPage() {
             <div className="space-y-2 text-sm text-neutral-500 dark:text-neutral-400 mb-4">
               {items.map((item: CartItem) => (
                 <div key={item.id} className="flex justify-between">
-                  <span className="truncate mr-2">
-                    {item.name} ×{item.qty}
-                  </span>
+                  <span>{item.name} ×{item.qty}</span>
                   <span>₹{(item.price * item.qty).toLocaleString()}</span>
                 </div>
               ))}
@@ -251,6 +264,7 @@ function CartPage() {
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );
@@ -260,10 +274,12 @@ function Field({
   label,
   type = "text",
   placeholder = "",
+  defaultValue = "",
 }: {
   label: string;
   type?: string;
   placeholder?: string;
+  defaultValue?: string;
 }) {
   return (
     <div>
@@ -273,6 +289,7 @@ function Field({
       <input
         type={type}
         placeholder={placeholder}
+        defaultValue={defaultValue}
         className="w-full rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400 border
           bg-neutral-50 dark:bg-neutral-800
           border-neutral-200 dark:border-neutral-600

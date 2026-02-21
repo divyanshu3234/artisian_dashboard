@@ -12,21 +12,27 @@ export default function ProfilePage() {
   const { setProfilePicture } = useProfile();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [profile, setProfile] = useState({
     display_name: "",
+    first_name: "",
+    last_name: "",
+    phone_number: "",
+    street_address: "",
+    city: "",
+    pin_code: "",
     profile_picture: "",
     description: "",
     location: "",
     language: "",
   });
 
-  // <-- added: hold selected file until save -->
   const [pendingImage, setPendingImage] = useState<File | null>(null);
 
-  // Fetch current seller profile
   useEffect(() => {
     const fetchProfile = async () => {
       setLoading(true);
+
       const {
         data: { user },
         error: userError,
@@ -40,7 +46,19 @@ export default function ProfilePage() {
 
       const { data, error } = await supabase
         .from("sellers")
-        .select("display_name, profile_picture, description, location, language")
+        .select(`
+          display_name,
+          first_name,
+          last_name,
+          phone_number,
+          street_address,
+          city,
+          pin_code,
+          profile_picture,
+          description,
+          location,
+          language
+        `)
         .eq("user_id", user.id)
         .single();
 
@@ -53,18 +71,16 @@ export default function ProfilePage() {
     fetchProfile();
   }, [supabase]);
 
-  // Handle input changes
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     setProfile({ ...profile, [e.target.name]: e.target.value });
   };
 
-  // <-- added: receive file from UploadPicture -->
   const handleFileSelect = (file: File | null) => {
     setPendingImage(file);
   };
 
-  // Save updates
   const handleSave = async () => {
     setSaving(true);
 
@@ -78,10 +94,11 @@ export default function ProfilePage() {
       return;
     }
 
-    // <-- added: upload pending image if present and get public URL -->
     let finalProfilePicture = profile.profile_picture;
+
     if (pendingImage) {
       const filePath = `users/${user.id}/${Date.now()}-${pendingImage.name}`;
+
       const { error: uploadError } = await supabase.storage
         .from("profile-pictures")
         .upload(filePath, pendingImage, { upsert: true });
@@ -104,6 +121,12 @@ export default function ProfilePage() {
       .from("sellers")
       .update({
         display_name: profile.display_name,
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        phone_number: profile.phone_number,
+        street_address: profile.street_address,
+        city: profile.city,
+        pin_code: profile.pin_code,
         profile_picture: finalProfilePicture,
         description: profile.description,
         location: profile.location,
@@ -114,10 +137,8 @@ export default function ProfilePage() {
     if (error) alert("Error updating profile: " + error.message);
     else {
       alert("Profile updated successfully!");
-      // clear pending image and update local state to show new URL immediately
       setPendingImage(null);
       setProfile(prev => ({ ...prev, profile_picture: finalProfilePicture }));
-
       if (finalProfilePicture) setProfilePicture(finalProfilePicture);
     }
 
@@ -125,31 +146,30 @@ export default function ProfilePage() {
   };
 
   const handleDelete = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete your seller account? This cannot be undone."
+    );
+    if (!confirmed) return;
 
-      const confirmed = window.confirm(
-        "Are you sure you want to delete your seller account? This cannot be undone."
-      );
-      if (!confirmed) return;
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+    if (userError || !user) return alert("You must be logged in.");
 
-      if (userError || !user) return alert("You must be logged in.");
+    const res = await fetch("/api/delete-account", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
+    });
 
-      const res = await fetch("/api/delete-account", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id }),
-      });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Failed to delete account");
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to delete account");
-
-      alert("✅ Account deleted successfully");
-      await supabase.auth.signOut();
-      window.location.reload();
+    alert("✅ Account deleted successfully");
+    await supabase.auth.signOut();
+    window.location.reload();
   };
 
   if (loading) {
@@ -167,29 +187,29 @@ export default function ProfilePage() {
 
         {/* Profile Picture */}
         <div className="flex items-center space-x-4">
-        <div className="w-20 h-20 rounded-full overflow-hidden border border-gray-300 dark:border-gray-600 flex-shrink-0">
-          {profile.profile_picture ? (
-            <Image
-              src={profile.profile_picture}
-              alt="Profile Picture"
-              width={80}
-              height={80}
-              className="object-cover w-full h-full"
-            />
-          ) : (
-            <div className="w-full h-full rounded-full bg-gray-300 dark:bg-gray-700" />
-          )}
-        </div>
+          <div className="w-20 h-20 rounded-full overflow-hidden border border-gray-300 dark:border-gray-600 flex-shrink-0">
+            {profile.profile_picture ? (
+              <Image
+                src={profile.profile_picture}
+                alt="Profile Picture"
+                width={80}
+                height={80}
+                className="object-cover w-full h-full"
+              />
+            ) : (
+              <div className="w-full h-full rounded-full bg-gray-300 dark:bg-gray-700" />
+            )}
+          </div>
 
         {/* Upload Section */}
-        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2">
           <label className="font-medium text-gray-800 dark:text-gray-200">
             Profile Picture
           </label>
           {/* <-- changed: pass onFileSelect handler to UploadPicture --> */}
-          <UploadPicture onFileSelect={handleFileSelect} />
+            <UploadPicture onFileSelect={handleFileSelect} />
+          </div>
         </div>
-      </div>
 
         {/* Display Name */}
         <div>
@@ -199,8 +219,79 @@ export default function ProfilePage() {
             name="display_name"
             value={profile.display_name || ""}
             onChange={handleChange}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+
+        {/* First & Last Name */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">First Name</label>
+            <input
+              type="text"
+              name="first_name"
+              value={profile.first_name || ""}
+              onChange={handleChange}
+              className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">Last Name</label>
+            <input
+              type="text"
+              name="last_name"
+              value={profile.last_name || ""}
+              onChange={handleChange}
+              className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* Phone */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Phone Number</label>
+          <input
+            type="tel"
+            name="phone_number"
+            value={profile.phone_number || ""}
+            onChange={handleChange}
+            className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Address */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Street Address</label>
+          <input
+            type="text"
+            name="street_address"
+            value={profile.street_address || ""}
+            onChange={handleChange}
+            className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1">City</label>
+            <input
+              type="text"
+              name="city"
+              value={profile.city || ""}
+              onChange={handleChange}
+              className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-1">PIN Code</label>
+            <input
+              type="text"
+              name="pin_code"
+              value={profile.pin_code || ""}
+              onChange={handleChange}
+              className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
         {/* Location */}
@@ -211,7 +302,7 @@ export default function ProfilePage() {
             name="location"
             value={profile.location || ""}
             onChange={handleChange}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border rounded-md px-3 py-2 bg-transparent focus:ring-2 focus:ring-blue-500"
           />
         </div>
 
@@ -222,7 +313,7 @@ export default function ProfilePage() {
             name="language"
             value={profile.language || ""}
             onChange={handleChange}
-            className="w-full p-2 border border-gray-300 rounded-md bg-white dark:bg-neutral-900 dark:border-neutral-700 dark:text-gray-100"
+            className="w-full p-2 border rounded-md bg-white dark:bg-neutral-900"
           >
             <option value="">Select your language</option>
             <option value="English">English</option>
@@ -232,16 +323,12 @@ export default function ProfilePage() {
         </div>
 
         {/* Description */}
-        <div className="flex flex-col gap-2">
-          <label className="block text-sm font-medium mb-1">Description</label>
-
-          {/* Audio + Manual Description Component */}
-          <AudioDescriptionRecorder
-            // Optional: you can provide initial value or a callback if needed
-            initialDescription={profile.description}
-            onChange={(value) => setProfile({ ...profile, description: value })}
-          />
-        </div>
+        <AudioDescriptionRecorder
+          initialDescription={profile.description}
+          onChange={(value) =>
+            setProfile({ ...profile, description: value })
+          }
+        />
 
         {/* Save Button */}
         <div className="flex">
@@ -253,7 +340,7 @@ export default function ProfilePage() {
           {saving ? "Saving..." : "Save Changes"}
         </button>
         </div>
-        
+
         <div className="flex">
         <button
           onClick={handleDelete}

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useCart } from "../../cartStore";
-import { products, Product } from "../../products";
+import { Product } from "../../products";
 
 function DescriptionPage() {
   const { id } = useParams();
@@ -11,19 +11,67 @@ function DescriptionPage() {
   const { add } = useCart();
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const product: Product | undefined = products.find(
-    (p: Product) => p.id === id
-  );
+  useEffect(() => {
+    if (!id) return;
+    async function fetchProduct() {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch(`/api/market?id=${id}`);
+        if (!res.ok) throw new Error(`Failed to fetch product (${res.status})`);
+        const json = await res.json();
+        // API returns { products: [...] } — grab the first match
+        const found: Product | undefined = (json.products ?? []).find(
+          (p: Product) => p.id === id
+        );
+        setProduct(found ?? null);
+      } catch (err: any) {
+        setError(err.message ?? "Something went wrong");
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchProduct();
+  }, [id]);
 
-  if (!product) {
+  // ── Loading ────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white">
+        <div className="border-b px-6 py-4 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700 shadow-sm">
+          <div className="h-4 w-24 bg-neutral-200 dark:bg-neutral-700 rounded animate-pulse" />
+        </div>
+        <div className="max-w-5xl mx-auto px-6 py-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="aspect-square rounded-2xl bg-neutral-200 dark:bg-neutral-800 animate-pulse" />
+            <div className="space-y-4 animate-pulse">
+              <div className="h-6 bg-neutral-200 dark:bg-neutral-700 rounded w-2/3" />
+              <div className="h-10 bg-neutral-200 dark:bg-neutral-700 rounded w-full" />
+              <div className="h-16 bg-neutral-200 dark:bg-neutral-700 rounded w-full" />
+              <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-1/4" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Error / Not found ──────────────────────────────────────────────────────
+  if (error || !product) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <div className="text-center">
           <p className="text-4xl mb-4">😕</p>
           <p className="text-xl font-bold text-neutral-900 dark:text-white mb-2">
-            Product not found
+            {error ? "Failed to load product" : "Product not found"}
           </p>
+          {error && (
+            <p className="text-sm text-neutral-400 mb-4">{error}</p>
+          )}
           <button
             onClick={() => router.push("/protected/market")}
             className="text-amber-500 hover:text-amber-400"
@@ -35,20 +83,14 @@ function DescriptionPage() {
     );
   }
 
-  const discount = product.oldPrice
-    ? Math.round(
-        ((product.oldPrice - product.price) / product.oldPrice) * 100
-      )
-    : null;
-
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const handleAdd = () => {
     for (let i = 0; i < qty; i++) {
       add({
         id: product.id,
         name: product.name,
-        artisan: product.artisan,
-        price: product.price,
-        image: product.image,
+        price: Number(product.price),
+        image: product.image_url ?? "",
       });
     }
     setAdded(true);
@@ -59,12 +101,6 @@ function DescriptionPage() {
     handleAdd();
     router.push("/protected/market/cart");
   };
-
-  const related: Product[] = products
-    .filter(
-      (p: Product) => p.category === product.category && p.id !== product.id
-    )
-    .slice(0, 3);
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white">
@@ -80,10 +116,6 @@ function DescriptionPage() {
           ← Market
         </button>
         <span className="text-neutral-300 dark:text-neutral-600">/</span>
-        <span className="text-neutral-500 dark:text-neutral-400">
-          {product.category}
-        </span>
-        <span className="text-neutral-300 dark:text-neutral-600">/</span>
         <span className="text-neutral-900 dark:text-white font-medium truncate">
           {product.name}
         </span>
@@ -94,85 +126,76 @@ function DescriptionPage() {
         {/* Product Detail Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-12">
 
-          {/* Image — wrapped in div, NOT anchor, to prevent zoom */}
+          {/* Image */}
           <div className="relative rounded-2xl overflow-hidden aspect-square shadow-md
             bg-neutral-100 dark:bg-neutral-800">
-            <img
-              src={product.image}
-              alt={product.name}
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-            {product.badge && (
-              <span className="absolute top-4 left-4 bg-amber-500 text-black text-xs font-bold px-3 py-1 rounded-full">
-                {product.badge}
-              </span>
-            )}
-            {discount && (
-              <span className="absolute top-4 right-4 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full">
-                -{discount}% OFF
-              </span>
+            {product.image_url ? (
+              <img
+                src={product.image_url}
+                alt={product.name}
+                className="w-full h-full object-cover"
+                draggable={false}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-neutral-300 dark:text-neutral-600">
+                No image
+              </div>
             )}
           </div>
 
           {/* Info Panel */}
           <div>
-            <p className="text-sm text-neutral-400 mb-2">
-              {product.country} · {product.artisan}
-            </p>
+            {/* Seller & type */}
             <h1 className="text-3xl font-bold mb-4">{product.name}</h1>
-
-            {/* Rating */}
-            <div className="flex items-center gap-2 mb-4">
-              <div className="flex">
-                {Array.from({ length: 5 }).map((_: unknown, i: number) => (
-                  <span
-                    key={i}
-                    className={`text-sm ${
-                      i < product.rating
-                        ? "text-amber-400"
-                        : "text-neutral-300 dark:text-neutral-600"
-                    }`}
-                  >
-                    ★
-                  </span>
-                ))}
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 text-sm text-neutral-400">
+                {product.sellers?.display_name}
+                {product.sellers?.display_name && product.sellers?.location && " · "}
+                {product.sellers?.location}
               </div>
-              <span className="text-sm text-neutral-400">
-                ({product.reviews} reviews)
-              </span>
             </div>
+
+            {/* Description */}
+            {product.description && (
+              <p className="text-sm text-neutral-600 dark:text-neutral-300 mb-4 leading-relaxed">
+                {product.description}
+              </p>
+            )}
+
+            {/* AI Description */}
+            {product.ai_description && (
+              <div className="rounded-xl p-4 border mb-4
+                bg-amber-50 dark:bg-amber-950/20
+                border-amber-200 dark:border-amber-800">
+                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1">
+                  ✨ AI Description
+                </p>
+                <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                  {product.ai_description}
+                </p>
+              </div>
+            )}
 
             {/* Price Box */}
             <div className="flex items-end gap-3 rounded-xl p-4 border mb-4
               bg-white dark:bg-neutral-900
               border-neutral-200 dark:border-neutral-700 shadow-sm">
               <span className="text-3xl font-bold">
-                ₹{product.price.toLocaleString()}
+                ₹{Number(product.price).toLocaleString()}
               </span>
-              {product.oldPrice && (
-                <div>
-                  <p className="text-sm text-neutral-400 line-through">
-                    ₹{product.oldPrice.toLocaleString()}
-                  </p>
-                  <p className="text-xs text-green-500">
-                    Save ₹{(product.oldPrice - product.price).toLocaleString()}
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Stock */}
             <p
               className={`text-sm mb-4 font-medium ${
-                product.inStock ? "text-green-500" : "text-red-400"
+                product.instock ? "text-green-500" : "text-red-400"
               }`}
             >
-              {product.inStock ? "✓ In Stock" : "✗ Out of Stock"}
+              {product.instock ? "✓ In Stock" : "✗ Out of Stock"}
             </p>
 
             {/* Quantity Selector */}
-            {product.inStock && (
+            {product.instock && (
               <div className="flex items-center gap-3 mb-5">
                 <span className="text-sm text-neutral-500 dark:text-neutral-400">
                   Qty:
@@ -201,9 +224,9 @@ function DescriptionPage() {
             <div className="flex gap-3 mb-5">
               <button
                 onClick={handleAdd}
-                disabled={!product.inStock}
+                disabled={!product.instock}
                 className={`flex-1 py-3 rounded-xl font-semibold transition-colors ${
-                  !product.inStock
+                  !product.instock
                     ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed"
                     : added
                     ? "bg-green-500 text-white"
@@ -214,9 +237,9 @@ function DescriptionPage() {
               </button>
               <button
                 onClick={handleBuyNow}
-                disabled={!product.inStock}
+                disabled={!product.instock}
                 className={`flex-1 py-3 rounded-xl font-bold transition-colors ${
-                  product.inStock
+                  product.instock
                     ? "bg-amber-500 hover:bg-amber-400 text-black"
                     : "bg-neutral-100 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed"
                 }`}
@@ -234,44 +257,6 @@ function DescriptionPage() {
             </div>
           </div>
         </div>
-
-        {/* Related Products */}
-        {related.length > 0 && (
-          <div>
-            <h2 className="text-lg font-bold mb-4">More {product.category}</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {related.map((r: Product) => (
-                <div
-                  key={r.id}
-                  onClick={() =>
-                    router.push(`/protected/market/description/${r.id}`)
-                  }
-                  className="cursor-pointer rounded-xl overflow-hidden border transition-all group
-                    bg-white dark:bg-neutral-900
-                    border-neutral-200 dark:border-neutral-700
-                    hover:border-amber-400 dark:hover:border-amber-500
-                    hover:shadow-md"
-                >
-                  <div className="aspect-video overflow-hidden bg-neutral-100 dark:bg-neutral-800">
-                    <img
-                      src={r.image}
-                      alt={r.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      draggable={false}
-                    />
-                  </div>
-                  <div className="p-3">
-                    <p className="font-medium text-sm">{r.name}</p>
-                    <p className="text-xs text-neutral-400">{r.artisan}</p>
-                    <p className="text-amber-600 font-bold mt-1">
-                      ₹{r.price.toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
